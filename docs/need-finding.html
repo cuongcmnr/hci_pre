@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Need Finding - HCI Project : Group VII</title>
+    <link rel="stylesheet" href="styles.css">
+    <script>
+        // Load the navigation dynamically
+        document.addEventListener("DOMContentLoaded", function() {
+            fetch("nav.html")
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById("navbar").innerHTML = data;
+                });
+        });
+    </script>
+</head>
+<body>
+    <header>
+        <h1>Need Finding</h1>
+    </header>
+
+    <div id="navbar"></div> <!-- Placeholder for the navigation bar -->
+    <center>
+        <iframe src="https://husteduvn-my.sharepoint.com/personal/dai_tq210146_sis_hust_edu_vn/_layouts/15/Doc.aspx?sourcedoc={4f00a8fb-194a-4460-8c5b-31d10cfdf3d6}&amp;action=embedview&amp;wdAr=1.7777777777777777" width="1360px" height="768px" frameborder="0">Đây là tài liệu <a target="_blank" href="https://office.com">Microsoft Office</a> được nhúng bản trình bày, hoạt động trên nền tảng <a target="_blank" href="https://office.com/webapps">Office</a>.</iframe>
+    </center>
+    <footer>
+        <p>&copy; 2024 - All rights reserved.</p>
+    </footer>
+</body>
+</html>

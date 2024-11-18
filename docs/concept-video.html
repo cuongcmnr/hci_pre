@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Concept Video - HCI Project : Group VII</title>
+    <link rel="stylesheet" href="styles.css">
+    <script>
+        // Load the navigation dynamically
+        document.addEventListener("DOMContentLoaded", function() {
+            fetch("nav.html")
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById("navbar").innerHTML = data;
+                });
+        });
+    </script>
+</head>
+<body>
+    <header>
+        <h1>Concept Video</h1>
+    </header>
+   
+    <div id="navbar"></div> <!-- Placeholder for the navigation bar -->
+    <center>
+        <iframe src="https://husteduvn.sharepoint.com/sites/2024.1AC4150ETngtcngi-my-Group07/_layouts/15/Doc.aspx?sourcedoc={b019104c-0b9b-4420-b3a4-681de6a3bf48}&amp;action=embedview&amp;wdAr=1.7777777777777777" width="1360px" height="768px" frameborder="0">Đây là tài liệu <a target="_blank" href="https://office.com">Microsoft Office</a> được nhúng bản trình bày, hoạt động trên nền tảng <a target="_blank" href="https://office.com/webapps">Office</a>.</iframe>
+        <div style="max-width: 1280px"><div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;"><iframe src="https://husteduvn.sharepoint.com/sites/2024.1AC4150ETngtcngi-my-Group07/_layouts/15/embed.aspx?UniqueId=799529aa-ae68-4b21-aa1f-d0518dc5be4a&nav=%7B%22playbackOptions%22%3A%7B%22startTimeInSeconds%22%3A0%7D%7D&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create" width="1280" height="720" frameborder="0" scrolling="no" allowfullscreen title="FinalConceptVideo.mp4" style="border:none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; height: 100%; max-width: 100%;"></iframe></div></div>
+    </center>
+    <footer>
+        <p>&copy; 2024 - All rights reserved.</p>
+    </footer>
+</body>
+</html>
