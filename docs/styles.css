@@ -103,3 +103,37 @@ body:before {
     opacity: 0.2; /* Subtle background pattern */
     z-index: -1; /* Behind the content */
 }
+/* Table Styles */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    font-size: 18px;
+    text-align: left;
+}
+
+table th, table td {
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+}
+
+table th {
+    background-color: #f4f4f4;
+    color: #333;
+    font-weight: bold;
+}
+
+table tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+table tr:hover {
+    background-color: #f1f1f1;
+}
+
+table caption {
+    caption-side: top;
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
