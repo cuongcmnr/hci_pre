@@ -1,0 +1,688 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"name":"csharp"}]}}
+
+#!markdown
+
+# I. Import Required Libraries
+Import the necessary libraries for data processing, visualization, and deep learning in C#.
+
+#!csharp
+
+#r "nuget: System.Drawing.Common"
+#r "nuget: XPlot.Plotly.Interactive"
+#r "nuget: NumSharp"
+#r "nuget: TensorFlow.NET"
+#r "nuget: SciSharp.TensorFlow.Redist0"
+#r "nuget: ScikitLearn.NET"
+#r "nuget: Microsoft.ML"
+#r "nuget: Microsoft.ML.ImageAnalytics"
+
+#!csharp
+
+// For data load
+using System;
+using System.IO;
+// For reading and processing images
+using System.Drawing;
+using System.Drawing.Imaging;
+// For visualizations
+using XPlot.Plotly;
+// For numerical operations
+using NumSharp;
+// For building and running deep learning model
+using Tensorflow;
+using static Tensorflow.Binding;
+using Tensorflow.Keras.Layers;
+using Tensorflow.Keras.Models;
+using Tensorflow.Keras.Optimizers;
+using Tensorflow.Keras.Utils;
+using Tensorflow.Keras.Metrics;
+// For splitting data
+using Sklearn;
+using Sklearn.ModelSelection;
+
+#!markdown
+
+# II. Load and Preprocess Data
+Load the dataset and preprocess the images and masks for training the U-Net model.
+
+#!csharp
+
+public class DataHelper
+{
+    public static (string[], string[]) LoadData(string path1, string path2)
+    {
+        // Read the images folder like a list
+        var imageDataset = Directory.GetFiles(path1);
+        var maskDataset = Directory.GetFiles(path2);
+        // Sort the lists to get both of them in same order
+        Array.Sort(imageDataset);
+        Array.Sort(maskDataset);
+
+        return (imageDataset, maskDataset);
+    }
+    public static (NDArray, NDArray) PreprocessData(string[] img, string[] mask, int[] targetShapeImg, int[] targetShapeMask)
+    {
+        int m = img.Length; // number of images
+        int i_h = targetShapeImg[0], i_w = targetShapeImg[1], i_c = targetShapeImg[2];
+        int m_h = targetShapeMask[0], m_w = targetShapeMask[1], m_c = targetShapeMask[2];
+        // Define X and Y as number of images along with shape of one image
+        var X = np.zeros((m, i_h, i_w, i_c), dtype: np.float32);
+        var y = np.zeros((m, m_h, m_w, m_c), dtype: np.int32);
+        // Resize images and masks
+        for (int index = 0; index < img.Length; index++)
+        {
+            // Convert image into an array of desired shape (3 channels)
+            var singleImg = Image.FromFile(img[index]);
+            singleImg = new Bitmap(singleImg, new Size(i_h, i_w));
+            var singleImgArray = np.array(singleImg) / 256.0;
+            X[index] = singleImgArray;
+            // Convert mask into an array of desired shape (1 channel)
+            var singleMask = Image.FromFile(mask[index]);
+            singleMask = new Bitmap(singleMask, new Size(m_h, m_w));
+            var singleMaskArray = np.array(singleMask) - 1; // to ensure classes #s start from 0
+            y[index] = singleMaskArray;
+        }
+        return (X, y);
+    }
+}
+
+#!csharp
+
+// Load and view data
+string path1 = "/content/drive/MyDrive/Colab Notebooks/UTBT/OTU2d/images/";
+string path2 = "/content/drive/MyDrive/Colab Notebooks/UTBT/OTU2d/annotations/";
+var (img, mask) = DataHelper.LoadData(path1, path2);
+// View an example of image and corresponding mask
+int showImages = 5;
+for (int i = 0; i < showImages; i++)
+{
+    var imgView = Image.FromFile(img[i]);
+    var maskView = Image.FromFile(mask[i]);
+    var fig = Chart.Plot(
+        new[]
+        {
+            new Graph.Scattergl
+            {
+                x = new[] { 0, 1 },
+                y = new[] { 0, 1 },
+                mode = "markers",
+                marker = new Graph.Marker { size = 12 }
+            }
+        }
+    );
+    fig.WithTitle($"Image {i}");
+    fig.Show();
+}
+
+#!csharp
+
+// Process data
+int[] targetShapeImg = { 128, 128, 3 };
+int[] targetShapeMask = { 128, 128, 1 };
+var (X, y) = DataHelper.PreprocessData(img, mask, targetShapeImg, targetShapeMask);
+// QC the shape of output and classes in output dataset
+Console.WriteLine($"X Shape: {X.shape}");
+Console.WriteLine($"Y Shape: {y.shape}");
+Console.WriteLine($"Unique classes in Y: {np.unique(y)}");
+
+#!csharp
+
+// Visualize the output
+int imageIndex = 0;
+var fig2 = Chart.Plot(
+    new[]
+    {
+        new Graph.Scattergl
+        {
+            x = new[] { 0, 1 },
+            y = new[] { 0, 1 },
+            mode = "markers",
+            marker = new Graph.Marker { size = 12 }
+        }
+    }
+);
+fig2.WithTitle("Processed Image");
+fig2.Show();
+
+#!markdown
+
+# Define Helper Functions
+Define helper functions for data loading, preprocessing, and visualization.
+
+#!csharp
+
+public class VisualizationHelper
+{
+    public static void ShowImages(string[] img, string[] mask, int showImages)
+    {
+        for (int i = 0; i < showImages; i++)
+        {
+            var imgView = Image.FromFile(img[i]);
+            var maskView = Image.FromFile(mask[i]);
+            var fig = Chart.Plot(
+                new[]
+                {
+                    new Graph.Scattergl
+                    {
+                        x = new[] { 0, 1 },
+                        y = new[] { 0, 1 },
+                        mode = "markers",
+                        marker = new Graph.Marker { size = 12 }
+                    }
+                }
+            );
+            fig.WithTitle($"Image {i}");
+            fig.Show();
+        }
+    }
+    public static void VisualizeOutput(NDArray X, NDArray y, int imageIndex)
+    {
+        var fig = Chart.Plot(
+            new[]
+            {
+                new Graph.Scattergl
+                {
+                    x = new[] { 0, 1 },
+                    y = new[] { 0, 1 },
+                    mode = "markers",
+                    marker = new Graph.Marker { size = 12 }
+                }
+            }
+        );
+        fig.WithTitle("Processed Image");
+        fig.Show();
+    }
+}
+
+#!markdown
+
+# Construct U-Net Architecture
+Define the U-Net architecture using C# and TensorFlow.NET.
+
+#!csharp
+
+// Define U-Net Encoder Block
+public class UNetHelper
+{
+    public static (Tensor, Tensor) EncoderMiniBlock(Tensor inputs, int nFilters = 32, float dropoutProb = 0.3f, bool maxPooling = true)
+    {
+        var conv = new Conv2D(nFilters, 3, activation: "relu", padding: "same", kernel_initializer: "he_normal").Apply(inputs);
+        conv = new Conv2D(nFilters, 3, activation: "relu", padding: "same", kernel_initializer: "he_normal").Apply(conv);
+        conv = new BatchNormalization().Apply(conv, training: true);
+        if (dropoutProb > 0)
+        {
+            conv = new Dropout(dropoutProb).Apply(conv);
+        }
+        Tensor nextLayer;
+        if (maxPooling)
+        {
+            nextLayer = new MaxPooling2D(pool_size: (2, 2)).Apply(conv);
+        }
+        else
+        {
+            nextLayer = conv;
+        }
+        var skipConnection = conv;
+        return (nextLayer, skipConnection);
+    }
+    // Define U-Net Decoder Block
+    public static Tensor DecoderMiniBlock(Tensor prevLayerInput, Tensor skipLayerInput, int nFilters = 32)
+    {
+        var up = new Conv2DTranspose(nFilters, (3, 3), strides: (2, 2), padding: "same", kernel_initializer: "he_normal").Apply(prevLayerInput);
+        var merge = tf.concat(new[] { up, skipLayerInput }, axis: 3);
+        var conv = new Conv2D(nFilters, 3, activation: "relu", padding: "same", kernel_initializer: "he_normal").Apply(merge);
+        conv = new Conv2D(nFilters, 3, activation: "relu", padding: "same", kernel_initializer: "he_normal").Apply(conv);
+        return conv;
+    }
+    // Compile U-Net Blocks
+    public static Model UNetCompiled(int[] inputSize = null, int nFilters = 32, int nClasses = 3)
+    {
+        inputSize ??= new[] { 128, 128, 3 };
+        var inputs = keras.Input(shape: inputSize);
+        var cblock1 = EncoderMiniBlock(inputs, nFilters, dropoutProb: 0, maxPooling: true);
+        var cblock2 = EncoderMiniBlock(cblock1.Item1, nFilters * 2, dropoutProb: 0, maxPooling: true);
+        var cblock3 = EncoderMiniBlock(cblock2.Item1, nFilters * 4, dropoutProb: 0, maxPooling: true);
+        var cblock4 = EncoderMiniBlock(cblock3.Item1, nFilters * 8, dropoutProb: 0.3f, maxPooling: true);
+        var cblock5 = EncoderMiniBlock(cblock4.Item1, nFilters * 16, dropoutProb: 0.3f, maxPooling: false);
+        var ublock6 = DecoderMiniBlock(cblock5.Item1, cblock4.Item2, nFilters * 8);
+        var ublock7 = DecoderMiniBlock(ublock6, cblock3.Item2, nFilters * 4);
+        var ublock8 = DecoderMiniBlock(ublock7, cblock2.Item2, nFilters * 2);
+        var ublock9 = DecoderMiniBlock(ublock8, cblock1.Item2, nFilters);
+        var conv9 = new Conv2D(nFilters, 3, activation: "relu", padding: "same", kernel_initializer: "he_normal").Apply(ublock9);
+        var conv10 = new Conv2D(nClasses, 1, padding: "same").Apply(conv9);
+        var model = keras.Model(inputs: inputs, outputs: conv10);
+        return model;
+    }
+}
+
+#!csharp
+
+// Build U-Net Architecture
+var unet = UNetHelper.UNetCompiled(inputSize: new[] { 128, 128, 3 }, nFilters: 32, nClasses: 256);
+// Check the summary to better interpret how the output dimensions change in each layer
+unet.summary();
+
+#!markdown
+
+# Train the Model
+Compile and train the U-Net model using the preprocessed dataset.
+
+#!csharp
+
+// Compile the model
+unet.compile(optimizer: new Adam(), 
+             loss: new SparseCategoricalCrossentropy(from_logits: true), 
+             metrics: new[] { "accuracy" });
+// Define a callback to save the best model based on validation accuracy
+var checkpoint = new ModelCheckpoint(filepath: "/content/drive/MyDrive/Colab Notebooks/UTBT/OTU2d/weights-improvement-{epoch:02d}-{val_loss:.2f}.hdf5", 
+                                     monitor: "val_accuracy", 
+                                     verbose: 1, 
+                                     save_best_only: true, 
+                                     mode: "max");
+var callbacksList = new[] { checkpoint };
+// Split the dataset into training and validation sets
+var (X_train, X_valid, y_train, y_valid) = train_test_split(X, y, test_size: 0.2, random_state: 123);
+// Train the model
+var results = unet.fit(X_train, y_train, 
+                       batch_size: 32, 
+                       epochs: 5, 
+                       validation_data: (X_valid, y_valid), 
+                       callbacks: callbacksList);
+
+#!markdown
+
+# Evaluate Model Results
+Evaluate the trained model on the validation dataset and visualize the results.
+
+#!csharp
+
+// Define a class for Mean IoU metric
+public class MeanIoU
+{
+    private int numClasses;
+    public MeanIoU(int classes)
+    {
+        numClasses = classes;
+    }
+    public float ComputeMeanIoU(NDArray yTrue, NDArray yPred)
+    {
+        yPred = np.argmax(yPred, axis: 3);
+        var miouKeras = new Tensorflow.Keras.Metrics.MeanIoU(numClasses);
+        miouKeras.update_state(yTrue, yPred);
+        return miouKeras.result().numpy();
+    }
+    public void ComputeClassIoU(NDArray yTrue, NDArray yPred)
+    {
+        yPred = np.argmax(yPred, axis: 3);
+        var miouKeras = new Tensorflow.Keras.Metrics.MeanIoU(numClasses);
+        miouKeras.update_state(yTrue, yPred);
+        var values = np.array(miouKeras.get_weights()).reshape(numClasses, numClasses);
+        for (int i = 0; i < numClasses; i++)
+        {
+            var classIou = values[i, i] / (np.sum(values[i, :]) + np.sum(values[:, i]) - values[i, i]);
+            Console.WriteLine($"IoU for class {i + 1} is: {classIou}");
+        }
+    }
+}
+// Instantiate MeanIoU class
+var meanIoU = new MeanIoU(2);
+
+#!csharp
+
+// Evaluate the model on the validation dataset
+var evaluationResults = unet.evaluate(X_valid, y_valid);
+Console.WriteLine($"Validation Loss: {evaluationResults[0]}");
+Console.WriteLine($"Validation Accuracy: {evaluationResults[1]}");
+
+#!csharp
+
+// Visualize the training history
+public class VisualizationHelper
+{
+    public static void ShowHistory(History history, bool validation = false)
+    {
+        if (validation)
+        {
+            var fig = Chart.Plot(
+                new[]
+                {
+                    new Graph.Scattergl
+                    {
+                        x = history.epoch,
+                        y = history.history["loss"],
+                        mode = "lines",
+                        name = "Train Loss"
+                    },
+                    new Graph.Scattergl
+                    {
+                        x = history.epoch,
+                        y = history.history["val_loss"],
+                        mode = "lines",
+                        name = "Validation Loss"
+                    }
+                }
+            );
+            fig.WithTitle("Loss Comparison");
+            fig.Show();
+            var fig2 = Chart.Plot(
+                new[]
+                {
+                    new Graph.Scattergl
+                    {
+                        x = history.epoch,
+                        y = history.history["accuracy"],
+                        mode = "lines",
+                        name = "Train Accuracy"
+                    },
+                    new Graph.Scattergl
+                    {
+                        x = history.epoch,
+                        y = history.history["val_accuracy"],
+                        mode = "lines",
+                        name = "Validation Accuracy"
+                    }
+                }
+            );
+            fig2.WithTitle("Accuracy Comparison");
+            fig2.Show();
+        }
+        else
+        {
+            var fig = Chart.Plot(
+                new[]
+                {
+                    new Graph.Scattergl
+                    {
+                        x = history.epoch,
+                        y = history.history["loss"],
+                        mode = "lines",
+                        name = "Train Loss"
+                    }
+                }
+            );
+            fig.WithTitle("Loss");
+            fig.Show();
+            var fig2 = Chart.Plot(
+                new[]
+                {
+                    new Graph.Scattergl
+                    {
+                        x = history.epoch,
+                        y = history.history["accuracy"],
+                        mode = "lines",
+                        name = "Train Accuracy"
+                    }
+                }
+            );
+            fig2.WithTitle("Accuracy");
+            fig2.Show();
+        }
+    }
+}
+
+#!csharp
+
+// Show training history
+VisualizationHelper.ShowHistory(results, true);
+
+#!csharp
+
+// Visualize predicted segmentations
+public class SegmentationVisualizer
+{
+    public static void VisualizeResults(Model unet, NDArray X_valid, NDArray y_valid, int index)
+    {
+        var img = X_valid[index].reshape(1, 128, 128, 3);
+        var predY = unet.predict(img);
+        var predMask = np.argmax(predY[0], axis: -1).reshape(128, 128, 1);
+        var fig = Chart.Plot(
+            new[]
+            {
+                new Graph.Scattergl
+                {
+                    x = new[] { 0, 1 },
+                    y = new[] { 0, 1 },
+                    mode = "markers",
+                    marker = new Graph.Marker { size = 12 }
+                }
+            }
+        );
+        fig.WithTitle("Processed Image");
+        fig.Show();
+        var fig2 = Chart.Plot(
+            new[]
+            {
+                new Graph.Scattergl
+                {
+                    x = new[] { 0, 1 },
+                    y = new[] { 0, 1 },
+                    mode = "markers",
+                    marker = new Graph.Marker { size = 12 }
+                }
+            }
+        );
+        fig2.WithTitle("Actual Masked Image");
+        fig2.Show();
+        var fig3 = Chart.Plot(
+            new[]
+            {
+                new Graph.Scattergl
+                {
+                    x = new[] { 0, 1 },
+                    y = new[] { 0, 1 },
+                    mode = "markers",
+                    marker = new Graph.Marker { size = 12 }
+                }
+            }
+        );
+        fig3.WithTitle("Predicted Masked Image");
+        fig3.Show();
+    }
+}
+// Visualize results for a few validation samples
+for (int i = 0; i < 5; i++)
+{
+    SegmentationVisualizer.VisualizeResults(unet, X_valid, y_valid, i);
+}
+
+#!markdown
+
+# Classification
+Load the classification dataset, apply the U-Net model, and perform classification using SVM.
+
+#!csharp
+
+// Load the classification dataset
+public class ClassificationDataLoader
+{
+    public static NDArray LoadImages(string path, int numImages = 50)
+    {
+        var images = new List<NDArray>();
+        var filenames = Directory.GetFiles(path);
+        // Select a random subset of numImages from the list of filenames
+        var random = new Random();
+        var selectedFilenames = filenames.OrderBy(x => random.Next()).Take(numImages).ToArray();
+
+        foreach (var filename in selectedFilenames)
+        {
+            var image = Image.FromFile(filename);
+            var imageArray = np.array(image);
+            images.Add(imageArray);
+        }
+        return np.array(images.ToArray());
+    }
+}
+// Specify the path to your data folder in Google Drive
+string dirPath = "/content/drive/MyDrive/Colab Notebooks/UTBT/OTU_2d_classes/";
+// Load images for each class
+string[] classnames = { "Chocolate cyst", "Serous cystadenoma", "Teratoma", "Normal ovary", "Theca cell tumor", "Simple cyst", "Mucinous cystadenoma", "High grade serous" };
+var classes = new List<NDArray>();
+foreach (var classname in classnames)
+{
+    var classImages = ClassificationDataLoader.LoadImages(Path.Combine(dirPath, classname));
+    classes.Add(classImages);
+}
+
+#!csharp
+
+// Convert all images to grayscale
+public class ImageProcessor
+{
+    public static NDArray ConvertToGrayscale(NDArray images)
+    {
+        var grayscaleImages = new List<NDArray>();
+
+        foreach (var image in images)
+        {
+            var grayscaleImage = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY);
+            grayscaleImages.Add(grayscaleImage);
+        }
+
+        return np.array(grayscaleImages.ToArray());
+    }
+}
+var grayscaleClasses = classes.Select(c => ImageProcessor.ConvertToGrayscale(c)).ToList();
+var allImagesOri = np.vstack(grayscaleClasses.ToArray());
+
+#!csharp
+
+// Apply U-Net model
+public class UNetApplier
+{
+    public static NDArray ApplyUNet(Model unet, NDArray images)
+    {
+        var unetImages = new List<NDArray>();
+        foreach (var image in images)
+        {
+            var img = image.reshape(1, 128, 128, 3);
+            var pred = unet.predict(img);
+            unetImages.Add(pred);
+        }
+        return np.array(unetImages.ToArray());
+    }
+}
+var unetClasses = grayscaleClasses.Select(c => UNetApplier.ApplyUNet(unet, c)).ToList();
+var allImagesUnet = np.vstack(unetClasses.ToArray());
+// Create labels
+var labels = np.array(Enumerable.Range(0, classnames.Length).SelectMany(i => Enumerable.Repeat(i, 50)).ToArray());
+// Split data into training and test sets
+var (X_trainOri, X_testOri, y_trainOri, y_testOri) = train_test_split(allImagesOri, labels, test_size: 0.2);
+var (X_trainOriUnet, X_testOriUnet, y_trainOriUnet, y_testOriUnet) = train_test_split(allImagesUnet, labels, test_size: 0.2);
+
+#!csharp
+
+// Extract LBP features
+public class LBPExtractor
+{
+    public static NDArray ExtractLBP(NDArray images)
+    {
+        var lbps = new List<NDArray>();
+        foreach (var image in images)
+        {
+            var lbp = skimage.feature.local_binary_pattern(image, P: 8, R: 2);
+            lbps.Add(lbp);
+        }
+        return np.array(lbps.ToArray());
+    }
+}
+var X_trainLbpOri = LBPExtractor.ExtractLBP(X_trainOri);
+var X_testLbpOri = LBPExtractor.ExtractLBP(X_testOri);
+var X_trainLbpOriUnet = LBPExtractor.ExtractLBP(X_trainOriUnet);
+var X_testLbpOriUnet = LBPExtractor.ExtractLBP(X_testOriUnet);
+// Create histograms
+public class HistogramCreator
+{
+    public static NDArray CreateHistograms(NDArray images, int subImagesNum, int binsPerSubImages)
+    {
+        var allHistograms = new List<NDArray>();
+        foreach (var image in images)
+        {
+            int rows = 2, cols = 2;
+            int stepRow = image.shape[0] / rows;
+            int stepCol = image.shape[1] / cols;
+            var subImageHistograms = new List<NDArray>();
+            for (int i = 0; i < rows; i++)
+            {
+                for (int j = 0; j < cols; j++)
+                {
+                    int startRow = i * stepRow, endRow = (i + 1) * stepRow;
+                    int startCol = j * stepCol, endCol = (j + 1) * stepCol;
+                    var subImage = image[startRow:endRow, startCol:endCol];
+                    var subImageHistogram = np.histogram(subImage, bins: binsPerSubImages)[0];
+                    subImageHistograms.Add(subImageHistogram);
+                }
+            }
+            var histogram = np.array(subImageHistograms.ToArray()).flatten();
+            allHistograms.Add(histogram);
+        }
+        return np.array(allHistograms.ToArray());
+    }
+}
+var X_trainHistOri = HistogramCreator.CreateHistograms(X_trainOri, subImagesNum: 4, binsPerSubImages: 256);
+var X_testHistOri = HistogramCreator.CreateHistograms(X_testOri, subImagesNum: 4, binsPerSubImages: 256);
+var X_trainHistOriLbp = HistogramCreator.CreateHistograms(X_trainLbpOri, subImagesNum: 4, binsPerSubImages: 256);
+var X_testHistOriLbp = HistogramCreator.CreateHistograms(X_testLbpOri, subImagesNum: 4, binsPerSubImages: 256);
+var X_trainHistOriUnet = HistogramCreator.CreateHistograms(X_trainOriUnet, subImagesNum: 4, binsPerSubImages: 256);
+var X_testHistOriUnet = HistogramCreator.CreateHistograms(X_testOriUnet, subImagesNum: 4, binsPerSubImages: 256);
+var X_trainHistOriUnetLbp = HistogramCreator.CreateHistograms(X_trainLbpOriUnet, subImagesNum: 4, binsPerSubImages: 256);
+var X_testHistOriUnetLbp = HistogramCreator.CreateHistograms(X_testLbpOriUnet, subImagesNum: 4, binsPerSubImages: 256);
+// Perform classification using SVM
+public class SVMClassifier
+{
+    public static void TrainAndEvaluate(SVC classifier, NDArray X_train, NDArray y_train, NDArray X_test, NDArray y_test)
+    {
+        classifier.fit(X_train, y_train);
+        var trainPredictions = classifier.predict(X_train);
+        var testPredictions = classifier.predict(X_test);
+        var confusionMatrix = metrics.confusion_matrix(y_test, testPredictions);
+        var cmDisplay = metrics.ConfusionMatrixDisplay(confusionMatrix, display_labels: classnames);
+        cmDisplay.plot();
+        plt.xticks(rotation: 90);
+        plt.show();
+        Console.WriteLine(metrics.classification_report(y_test, testPredictions));
+        Console.WriteLine($"Train accuracy: {metrics.accuracy_score(trainPredictions, y_train)}");
+        Console.WriteLine($"Test accuracy: {metrics.accuracy_score(testPredictions, y_test)}");
+    }
+}
+var classifier = new SVC();
+SVMClassifier.TrainAndEvaluate(classifier, X_trainHistOri, y_trainOri, X_testHistOri, y_testOri);
+SVMClassifier.TrainAndEvaluate(classifier, X_trainHistOriLbp, y_trainOri, X_testHistOriLbp, y_testOri);
+SVMClassifier.TrainAndEvaluate(classifier, X_trainHistOriUnet, y_trainOriUnet, X_testHistOriUnet, y_testOriUnet);
+SVMClassifier.TrainAndEvaluate(classifier, X_trainHistOriUnetLbp, y_trainOriUnet, X_testHistOriUnetLbp, y_testOriUnet);
+
+#!csharp
+
+// Find and show misclassifications
+public class MisclassificationFinder
+{
+    public static int[] FindMisclassifications(NDArray labels, NDArray preds)
+    {
+        var indices = new List<int>();
+
+        for (int i = 0; i < preds.size; i++)
+        {
+            if (preds[i] != labels[i])
+            {
+                indices.Add(i);
+            }
+        }
+        return indices.ToArray();
+    }
+    public static void ShowMisclassifications(NDArray images, int[] misclassified, NDArray labels, NDArray preds, int startIndex = 0)
+    {
+        var fig = plt.figure(figsize: (6, 6));
+        for (int i = 0; i < 4; i++)
+        {
+            var ax = fig.add_subplot(2, 2, i + 1);
+            ax.imshow(images[misclassified[startIndex + i]], cmap: "gray");
+            ax.set_title($"Actual: {classnames[labels[misclassified[startIndex + i]]]} \n Pred: {classnames[preds[misclassified[startIndex + i]]]}");
+            ax.axis("off");
+        }
+        plt.show();
+    }
+}
+var predictions = classifier.predict(X_testHistOri);
+var misclassifications = MisclassificationFinder.FindMisclassifications(y_testOri, predictions);
+MisclassificationFinder.ShowMisclassifications(X_testOri, misclassifications, y_testOri, predictions, startIndex: 3);
